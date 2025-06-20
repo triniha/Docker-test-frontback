@@ -2,8 +2,6 @@ name: Backend Deploy to Ubuntu Server
 
 on:
   push:
-    branches:
-      - main
     paths:
       - 'backend/**'
 
@@ -25,9 +23,7 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          cd ~/Docker-test-frontback
-          git pull origin dev
-          cd backend
+          cd ~/Docker-test-frontback/backend
           docker ps -a --filter "name=backend-" -q | xargs -r docker rm -f
           docker images "backend-*" -q | xargs -r docker rmi -f
           docker build -t ${{ env.TAG }} .
