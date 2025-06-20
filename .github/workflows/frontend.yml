@@ -1,0 +1,34 @@
+name: Frontend Deploy to Ubuntu Server
+
+on:
+  push:
+    branches:
+      - Dev
+    paths:
+      - 'frontend/**'
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set unique tag
+      run: echo "TAG=frontend-$(date +%s)" >> $GITHUB_ENV
+
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd ~/Docker-test-frontback
+          git pull origin dev
+          cd frontend
+          docker ps -a --filter "name=frontend-" -q | xargs -r docker rm -f
+          docker images "frontend-*" -q | xargs -r docker rmi -f
+          docker build -t ${{ env.TAG }} .
+          docker run -d --name ${{ env.TAG }} -p 3000:3000 ${{ env.TAG }}
