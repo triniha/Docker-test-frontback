@@ -1,31 +1,36 @@
-name: Deploy Frontend & Backend
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
     paths:
       - 'frontend/**'
       - 'backend/**'
-      - '.github/workflows/deploy.yml'
+      - '.github/workflows/**'
 
 jobs:
   deploy:
-    name: Deploy via SSH
+    name: Build and Deploy Frontend and Backend
     runs-on: ubuntu-latest
 
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup SSH Agent
-        uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Cleanup, Build, Deploy on Remote
+      - name: Set up SSH
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to Server via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'EOF'
             echo "🧹 Removing old frontend/backend containers if any..."
             docker ps -a --filter "name=frontend-" -q | xargs -r docker rm -f
             docker ps -a --filter "name=backend-" -q | xargs -r docker rm -f
@@ -35,16 +40,14 @@ jobs:
             docker images "backend-*" -q | xargs -r docker rmi -f
 
             echo "📦 Building new frontend image..."
-            cd ~/Docker-test-frontback/frontend
-            docker build -t frontend-$(date +%s) .
+            docker build -t frontend-$(date +%s) ./Docker-test-frontback/frontend || exit 1
 
             echo "🚀 Running new frontend container..."
-            docker run -d --name frontend-latest -p 3000:3000 $(docker images | grep frontend- | head -n1 | awk '{print $1}')
+            docker run -d --name frontend-latest -p 3000:3000 $(docker images | grep frontend- | head -n1 | awk '{print $1}') || exit 1
 
             echo "📦 Building new backend image..."
-            cd ~/Docker-test-frontback/backend
-            docker build -t backend-$(date +%s) .
+            docker build -t backend-$(date +%s) ./Docker-test-frontback/backend || exit 1
 
             echo "🚀 Running new backend container..."
-            docker run -d --name backend-latest -p 5000:5000 $(docker images | grep backend- | head -n1 | awk '{print $1}')
+            docker run -d --name backend-latest -p 5000:5000 $(docker images | grep backend- | head -n1 | awk '{print $1}') || exit 1
           EOF
