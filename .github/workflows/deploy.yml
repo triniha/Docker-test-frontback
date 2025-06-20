@@ -1,37 +1,36 @@
-name: CI/CD Pipeline
+name: Deploy Frontend & Backend
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'frontend/**'
       - 'backend/**'
-      - '.github/workflows/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
-    name: Build and Deploy Frontend and Backend
+    name: Deploy to Remote Server
     runs-on: ubuntu-latest
 
-    env:
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v3
 
       - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Deploy to Server via SSH
+      - name: Upload Code to Server
         run: |
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'EOF'
-            echo "🧹 Removing old frontend/backend containers if any..."
+          scp -r -o StrictHostKeyChecking=no frontend backend ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/app
+
+      - name: Deploy Frontend & Backend
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            echo "🧹 Cleaning old containers..."
             docker ps -a --filter "name=frontend-" -q | xargs -r docker rm -f
             docker ps -a --filter "name=backend-" -q | xargs -r docker rm -f
 
@@ -39,15 +38,20 @@ jobs:
             docker images "frontend-*" -q | xargs -r docker rmi -f
             docker images "backend-*" -q | xargs -r docker rmi -f
 
-            echo "📦 Building new frontend image..."
-            docker build -t frontend-$(date +%s) ./Docker-test-frontback/frontend || exit 1
+            echo "📦 Building frontend image..."
+            cd /tmp/app/frontend
+            docker build -t frontend-$(date +%s) .
 
-            echo "🚀 Running new frontend container..."
-            docker run -d --name frontend-latest -p 3000:3000 $(docker images | grep frontend- | head -n1 | awk '{print $1}') || exit 1
+            echo "🚀 Running frontend container..."
+            docker run -d --name frontend-latest -p 3000:3000 $(docker images | grep frontend- | head -n1 | awk '{print $1}')
 
-            echo "📦 Building new backend image..."
-            docker build -t backend-$(date +%s) ./Docker-test-frontback/backend || exit 1
+            echo "📦 Building backend image..."
+            cd /tmp/app/backend
+            docker build -t backend-$(date +%s) .
 
-            echo "🚀 Running new backend container..."
-            docker run -d --name backend-latest -p 5000:5000 $(docker images | grep backend- | head -n1 | awk '{print $1}') || exit 1
+            echo "🚀 Running backend container..."
+            docker run -d --name backend-latest -p 5000:5000 $(docker images | grep backend- | head -n1 | awk '{print $1}')
+
+            echo "🧽 Cleaning up code from server..."
+            rm -rf /tmp/app
           EOF
