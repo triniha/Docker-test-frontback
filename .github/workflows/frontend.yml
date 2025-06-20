@@ -3,7 +3,7 @@ name: Frontend Deploy to Ubuntu Server
 on:
   push:
     branches:
-      - dev
+      - Dev
     paths:
       - 'frontend/**'
 
