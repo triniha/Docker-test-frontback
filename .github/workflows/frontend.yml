@@ -2,6 +2,8 @@ name: Frontend Deploy to Ubuntu Server
 
 on:
   push:
+    branches:
+      - dev
     paths:
       - 'frontend/**'
 
@@ -23,7 +25,9 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          cd ~/Docker-test-frontback/frontend
+          cd ~/Docker-test-frontback
+          git pull origin dev
+          cd frontend
           docker ps -a --filter "name=frontend-" -q | xargs -r docker rm -f
           docker images "frontend-*" -q | xargs -r docker rmi -f
           docker build -t ${{ env.TAG }} .
